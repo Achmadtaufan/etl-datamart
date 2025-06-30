@@ -1,0 +1,127 @@
+          
+CREATE OR ALTER PROCEDURE SP_VALIDASI_UPLOADDATA_NSS_PHENTITY        
+AS        
+        
+/* CREATE BY ACHMAD TAUFAN, UR-2025-05-0030, 20250610 */        
+        
+BEGIN        
+    SET NOCOUNT ON;        
+       
+ ------------------------------------------------------------------------------------------       
+ --Validasi Kolom Primary Key , IF NEEDED!!      
+    IF EXISTS (        
+        SELECT 1        
+        FROM STG.DBO.ZTEMP_NSS_PHENTITY_UPLOAD z        
+        WHERE ISNULL(Client_Name, '')=''       
+    )        
+    BEGIN        
+        RAISERROR('VALIDASI GAGAL: Terdapat Client_Name yang kosong.',16,1);      
+  RETURN;      
+    END;        
+      
+ IF EXISTS (        
+        SELECT 1        
+        FROM STG.DBO.ZTEMP_NSS_PHENTITY_UPLOAD z        
+        WHERE ISNULL(Birth_Date, '')=''       
+    )        
+    BEGIN        
+        RAISERROR('VALIDASI GAGAL: Terdapat Birth_Date yang kosong.',16,1);      
+  RETURN;      
+    END;        
+      
+ IF EXISTS (        
+        SELECT 1        
+        FROM STG.DBO.ZTEMP_NSS_PHENTITY_UPLOAD z        
+        WHERE ISNULL(Gender, '')=''       
+    )        
+    BEGIN        
+        RAISERROR('VALIDASI GAGAL: Terdapat Gender yang kosong.',16,1);      
+  RETURN;      
+    END;        
+      
+ IF EXISTS (        
+        SELECT 1        
+        FROM STG.DBO.ZTEMP_NSS_PHENTITY_UPLOAD z        
+        WHERE ISNULL(Identification_No, '')=''       
+    )        
+    BEGIN        
+        RAISERROR('VALIDASI GAGAL: Terdapat Identification_No yang kosong.',16,1);      
+  RETURN;      
+    END;      
+  
+  
+ IF EXISTS (        
+        SELECT 1        
+        FROM STG.DBO.ZTEMP_NSS_PHENTITY_UPLOAD z        
+        WHERE Policy_Number IS NULL OR LTRIM(RTRIM(REPLACE(REPLACE(REPLACE(Policy_Number, CHAR(160),''), CHAR(9),''), CHAR(13),'')))=''  
+    )        
+    BEGIN        
+        RAISERROR('VALIDASI GAGAL: Terdapat Policy_Number yang kosong.',16,1);      
+  RETURN;      
+    END;    
+  
+ IF EXISTS (        
+        SELECT 1        
+        FROM STG.DBO.ZTEMP_NSS_PHENTITY_UPLOAD z        
+        WHERE ISNULL(Role, '')=''       
+    )        
+    BEGIN        
+        RAISERROR('VALIDASI GAGAL: Terdapat Role yang kosong.',16,1);      
+  RETURN;      
+    END;    
+-------------------------------------------------------------------------    
+----kolom mandatory di FCRM    
+IF EXISTS (        
+    SELECT 1        
+    FROM STG.DBO.ZTEMP_NSS_PHENTITY_UPLOAD z        
+    WHERE ISNULL(Country_Residence, '')=''       
+)        
+BEGIN        
+    RAISERROR('VALIDASI GAGAL: Terdapat country residence yang kosong.',16,1);      
+RETURN;      
+END;     
+    
+ ------------------------------------------------------------------------------------------      
+       
+    -- Validasi Policy Number        
+    IF EXISTS (        
+        SELECT 1        
+        FROM STG.DBO.ZTEMP_NSS_PHENTITY_UPLOAD z        
+        WHERE NOT EXISTS (        
+            SELECT 1 FROM DWH.DBO.TR_POLICY P WITH(NOLOCK) WHERE P.POLICY_NUMBER = Z.Policy_Number        
+        )        
+    )        
+    BEGIN        
+        DECLARE @invalidPolnum VARCHAR(50);        
+        SELECT TOP 1 @invalidPolnum = z.Policy_Number        
+        FROM STG.DBO.ZTEMP_NSS_PHENTITY_UPLOAD z        
+        WHERE NOT EXISTS (        
+            SELECT 1 FROM DWH.DBO.TR_POLICY P WITH(NOLOCK) WHERE P.POLICY_NUMBER = Z.Policy_Number        
+        );        
+        RAISERROR('Policy number %s not found', 16, 1, @invalidPolnum);        
+        RETURN;        
+    END;        
+        
+    -- Validasi Role        
+    IF EXISTS (        
+        SELECT 1        
+        FROM STG.DBO.ZTEMP_NSS_PHENTITY_UPLOAD z        
+        WHERE NOT EXISTS (        
+            SELECT 1        
+            FROM DWH.DBO.LA_ITEMDESC i WITH(NOLOCK)        
+            WHERE i.ITEMTABLE = 'PH_ENTITY' AND i.ITEMCODE = z.Role        
+        )        
+    )        
+    BEGIN        
+        DECLARE @invalidRole VARCHAR(50);        
+        SELECT TOP 1 @invalidRole = z.role        
+        FROM STG.DBO.ZTEMP_NSS_PHENTITY_UPLOAD z        
+        WHERE NOT EXISTS (        
+            SELECT 1        
+            FROM DWH.DBO.LA_ITEMDESC i WITH(NOLOCK)        
+            WHERE i.ITEMTABLE = 'PH_ENTITY' AND i.ITEMCODE = z.Role        
+        );        
+        RAISERROR('Role %s not found', 16, 1, @invalidRole);        
+        RETURN;        
+ END;        
+END;        
