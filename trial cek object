@@ -1,0 +1,47 @@
+-- Variabel untuk dynamic SQL
+DECLARE @DBName SYSNAME;
+DECLARE @SQL NVARCHAR(MAX) = N'';
+
+-- Cursor untuk loop semua user database
+DECLARE db_cursor CURSOR FOR
+SELECT name 
+FROM sys.databases 
+WHERE state_desc = 'ONLINE'
+AND name NOT IN ('master', 'tempdb', 'model', 'msdb');
+
+OPEN db_cursor;
+FETCH NEXT FROM db_cursor INTO @DBName;
+
+WHILE @@FETCH_STATUS = 0
+BEGIN
+    DECLARE @InnerSQL NVARCHAR(MAX);
+
+    SET @InnerSQL = '
+    SELECT DISTINCT
+        ''' + @DBName + ''' AS db_name,
+        s.name AS schema_name,
+        o.name AS object_name,
+        o.type_desc AS object_type
+    FROM [' + @DBName + '].sys.sql_modules m
+    JOIN [' + @DBName + '].sys.objects o ON m.object_id = o.object_id
+    JOIN [' + @DBName + '].sys.schemas s ON o.schema_id = s.schema_id
+    WHERE m.definition LIKE ''%sys.servers%''
+      AND m.definition LIKE ''%data_source%''
+      AND m.definition LIKE ''%rds-shin.rdws.amazonaws.com%''
+    ';
+
+    -- Gabung ke query utama
+    SET @SQL = @SQL + @InnerSQL + ' UNION ALL ' + CHAR(13);
+
+    FETCH NEXT FROM db_cursor INTO @DBName;
+END
+
+CLOSE db_cursor;
+DEALLOCATE db_cursor;
+
+-- Hapus UNION ALL terakhir
+IF RIGHT(@SQL, 12) = 'UNION ALL ' + CHAR(13)
+    SET @SQL = LEFT(@SQL, LEN(@SQL) - 12);
+
+-- Jalankan query akhir
+EXEC sp_executesql @SQL;
