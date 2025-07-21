@@ -1,0 +1,4 @@
+Source: "Microsoft SQL Server Native Client 11.0"  Hresult: 0x80040E2F  Description: "Violation of PRIMARY KEY constraint 'PK_LF_POLICYBANKACCOUNT'. Cannot insert duplicate key in object 'dbo.LF_POLICYBANKACCOUNT'. 
+The duplicate key value is (60454777, 00006, 403409XXXX4994      , 20241001, 20281031).".  End Error  Error: 2025-07-21 13:01:52.26     Code: 0xC0209029     Source: LF POLICYBANKACCOUNT UPDATE [156]     
+Description: SSIS Error Code DTS_E_INDUCEDTRANSFORMFAILUREONERROR.  The "UPDATE.Inputs[OLE DB Command Input]" failed because error code 0xC020906E occurred, 
+and the error row disposition on "UPDATE.Inputs[OLE DB Command Input]" specifies failure on error. An error occurred on the specified object of the specified component. 
