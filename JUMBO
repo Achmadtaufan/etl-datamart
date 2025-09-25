@@ -1,0 +1,104 @@
+ 
+ DECLARE @BODYMAIL VARCHAR(MAX)                           
+  ,@REPORTDATE VARCHAR(30)                            
+  ,@TOTALCASE INT,@TOTALAFYP varchar(100)                           
+  ,@fwdlist varchar(8000)                           
+  ,@count int                           
+  ,@todaysenttimes int   
+  ,@DATEDIFF INT = '-36'
+
+IF OBJECT_ID('tempdb..#temp_email') IS NOT NULL                           
+  DROP TABLE #temp_email;                            
+                           
+select top 30 email_address                            
+into #temp_email                           
+from(                           
+ select distinct email_address from (    
+ SELECT 'itdataconsultant01.id@fwd.com' email_address 
+ --UNION SELECT 'Muhammad.Rendy@fwd.com' email_address   
+ --UNION SELECT 'itdata.id@fwd.com' email_address 
+ --UNION SELECT 'Corry.Hutabarat@fwd.com' email_address
+--         select   ltrim(rtrim(EMAIL_ADDRESS )) email_address                           
+--		FROM v_DIM_AGENT DA
+--		 LEFT JOIN DWH.DBO.LIST_AGENT_EXCLUDE AE WITH(NOLOCK) ON DA.AGENT_ID=AE.AGENT_ID --> ADD BY TAUFAN 2025-09-15 UR-2025-06-0021
+--		where AGENT_LEVEL in ('sd','nsd','fwd','BD')       
+--		-- Request Mas Kemal : Perubahan status agent sebelumnya not in  ('terminated','death')  menjadi Active - 20221019      
+--		and AGENT_STATUS IN('ACTIVE')       
+--		and EMAIL_ADDRESS <> 'agency.id@fwd.com'                           
+--		and EMAIL_ADDRESS not like '%agi.bella%'                           
+--		and EMAIL_ADDRESS not like '%agibella%'                           
+--		and isnull(EMAIL_ADDRESS,'') <> ''              
+--		-- UR-2024-02-0010 Rename Non Jumbo Name to Forward Partner ( Non Jumbo =>  Forward Partner ) ADD BY DWT. 20240224
+--		--AND JUMBO='Non Jumbo' 
+--		AND JUMBO='Forward Partners'
+--		AND AE.AGENT_ID IS NULL --> ADD BY TAUFAN 2025-09-15 UR-2025-06-0021
+--union all       
+--SELECT DISTINCT EMAIL       
+--from MS_ADD_EMAIL (NOLOCK) WHERE REPORTNAME='DAILY SUBMISSION' AND GROUPS='ALL'        
+ )y                           
+)x                           
+where   EMAIL_ADDRESS not in (select EMAIL_ADDRESS  from NTF_AGENCYDAILYSUBMISSION_HIST_nonjumbo_NEW nolock where convert(date,SENTDATE) = convert(date,getdate()) )                           
+--AND EMAIL_ADDRESS IN ('kemal.putra@fwd.com','evelyn.natalia@fwd.com','pandu.hutabarat@fwd.com','dewi.toesin@fwd.com','ridwanudin@fwd.com')  
+ORDER BY NEWID()                           
+                
+                           
+set @fwdlist =''                           
+                             
+select      @fwdlist= @fwdlist + ';'+email_address from  #temp_email                            
+                            
+                           
+select @count = count (EMAIL_ADDRESS) from NTF_AGENCYDAILYSUBMISSION_HIST_nonjumbo_NEW nolock where convert(date,SENTDATE) = convert(date,getdate())                            
+                          
+                                
+if @count = 0                           
+begin                         
+                        
+ SELECT @TOTALCASE=COUNT(DISTINCT POLICY_NUM)                           
+ FROM FACT_AGENCYDAILYPRODUCTION_NEW NB WITH(NOLOCK)
+ LEFT JOIN DWH.DBO.LIST_AGENT_EXCLUDE PRD_AE WITH(NOLOCK) ON NB.PRD_AGENT_CODE=PRD_AE.AGENT_ID --> ADD BY TAUFAN 2025-09-15 UR-2025-06-0021
+ LEFT JOIN DWH.DBO.LIST_AGENT_EXCLUDE SRV_AE WITH(NOLOCK) ON NB.SRV_AGENT_CODE=SRV_AE.AGENT_ID --> ADD BY TAUFAN 2025-09-15 UR-2025-06-0021
+ WHERE SUBMIT_DATE =  CONVERT(DATE,GETDATE()+@DATEDIFF)                      
+ and POLICY_STATUS NOT IN ('CF', 'NT',  'WD', 'PO')                            
+ and AFYP <> 0                             
+-- UR-2024-02-0010 Rename Non Jumbo Name to Forward Partner ( Non Jumbo =>  Forward Partner ) ADD BY DWT. 20240224
+-- AND JUMBO='Non Jumbo' 
+ AND JUMBO='Forward Partners'           
+ AND PRD_AE.AGENT_ID IS NULL --> ADD BY TAUFAN 2025-09-15 UR-2025-06-0021  
+ AND SRV_AE.AGENT_ID IS NULL --> ADD BY TAUFAN 2025-09-15 UR-2025-06-0021    
+ SELECT @TOTALCASE
+ SELECT   @TOTALAFYP =                            
+    REPLACE(CONVERT(VARCHAR,CAST(                           
+     SUM(     PREMIUM  * isnull(BASICPREMIUM_RATE,1)--* case when lp.PAYMENT_CODE = '12' then 2 else 1 end                         
+     )                            
+      AS MONEY)                           
+    ,1),'.00','')                             
+  FROM FACT_AGENCYDAILYPRODUCTION_NEW lp WITH(NOLOCK)      
+     left join MS_PRODUCTRATE  b on lp.PLAN_CODE = b.PLAN_CODE and b.VALUE_TYPE='ape'
+	 LEFT JOIN DWH.DBO.LIST_AGENT_EXCLUDE PRD_AE WITH(NOLOCK) ON LP.PRD_AGENT_CODE=PRD_AE.AGENT_ID --> ADD BY TAUFAN 2025-09-15 UR-2025-06-0021
+	 LEFT JOIN DWH.DBO.LIST_AGENT_EXCLUDE SRV_AE WITH(NOLOCK) ON LP.SRV_AGENT_CODE=SRV_AE.AGENT_ID --> ADD BY TAUFAN 2025-09-15 UR-2025-06-0021
+  WHERE SUBMIT_DATE =  CONVERT(DATE,GETDATE()+@DATEDIFF)                            
+  AND LP.POLICY_STATUS NOT IN ('CF', 'NT',  'WD', 'PO')                            
+-- UR-2024-02-0010 Rename Non Jumbo Name to Forward Partner ( Non Jumbo =>  Forward Partner ) ADD BY DWT. 20240224
+-- AND JUMBO='Non Jumbo' 
+AND JUMBO='Forward Partners'             
+ AND PRD_AE.AGENT_ID IS NULL --> ADD BY TAUFAN 2025-09-15 UR-2025-06-0021  
+ AND SRV_AE.AGENT_ID IS NULL --> ADD BY TAUFAN 2025-09-15 UR-2025-06-0021
+ SELECT @TOTALAFYP
+ END
+ SET @BODYMAIL ='<font face="calibri" size="2">'+                           
+      '<b>DAILY SUBMISSION NON Forward Partners REPORT- '+@REPORTDATE +'<br><br><br>'+                           
+      'TOTAL CASES: '+ CONVERT(VARCHAR,@TOTALCASE) +'<br>' +                            
+      'TOTAL FYP: '+  @TOTALAFYP  +'<br><br></b></font>' +                           
+      '<table width="60%"><tr><td style="white-space:nowrap"><strong style="font-size: 10pt;">PRODUCING AGENT</strong></td><td style="white-space:nowrap"><strong style="font-size: 10pt;">FWD</strong></td><td style="white-space:nowrap" align="center"><str
+
+
+
+
+	  
+
+
+
+ong style="font-size: 10pt;">CASES</strong></td><td style="white-space:nowrap" align="right"><strong style="font-size: 10pt;">FYP</strong></td></tr>'     
+
+
+SELECT @BODYMAIL
