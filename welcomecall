@@ -1,92 +1,89 @@
-with KPI_SUMMARY AS(
-SELECT  A.AGENTID, A.DEFINITIONTYPECD,A.KPI_VALUE,A.PERIODE 
-from AGENT_KPI_SUMMARY A
-INNER JOIN (
-select AGENTID,MAX(PERIODE) AS PERIODE from AGENT_KPI_SUMMARY
-group by AGENTID
-) Z on A.AGENTID = Z.AGENTID and A.PERIODE = Z.PERIODE
-WHERE A.DEFINITIONTYPECD = 'PERSISTENCY_S24'
+-- 1) Optimized: use OUTER APPLY / ROW_NUMBER to get latest rows per agent/policy
+WITH POL_COMBINED AS (
+    SELECT POLICYNUM, IsRemoteSelling
+    FROM STG.DBO.NB_POLICY
+    UNION ALL
+    SELECT POLICY_ID AS POLICYNUM, CONVERT(NVARCHAR(220), remote_selling) AS IsRemoteSelling
+    FROM STG.DBO.OWB_NB_POLICY
 ),
-HOLD_STATUS AS(
-select Z.AGENTID As AGENT_IDS,Z.HOLDSTATUS,Z.STATUSDATE,Z.CATEGORYHOLD 
-from [DMSPROD].[C2L_DMS].[dbo].[AGENT_HOLD_STATUS] Z
-INNER JOIN (SELECT AGENTID,MAX(STATUSDATE) AS STATUSDATE 
-			FROM [DMSPROD].[C2L_DMS].[dbo].[AGENT_HOLD_STATUS]
-			where CATEGORYHOLD = 'REPORTHOLD'
-			group by AGENTID) X on Z.AGENTID = X.AGENTID AND Z.STATUSDATE = X.STATUSDATE
-where Z.CATEGORYHOLD = 'REPORTHOLD'
-) 
---,
---REMOTESELLING AS (
---select POLICYNUM As POLNUM,IsRemoteSelling AS REMOTESELLING from (
---select POLICYNUM, IsRemoteSelling from STG.DBO.NB_POLICY 
---UNION ALL
---select POLICY_ID AS POLICYNUM, remote_selling from STG.DBO.OWB_NB_POLICY
---)A
---)
-               
-SELECT distinct CW.[POLICY_NUMBER]                
-      ,[ISSUED_DATE] = convert(varchar(10),CONVERT(DATE,cw.ISSUED_DATE) ,120)               
-      ,[DOB_PEMEGANG_POLIS]= convert(varchar(10),CONVERT(DATE,PP_DOB) ,120)  
-	  ,[DOB_TERTANGGUNG_POLIS]=convert(varchar(10),CONVERT(DATE,TTG_DOB) ,120)
-      ,[NAMA_PEMEGANG_POLIS]=dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM([PP_NAME])))                
-      ,[NAMA_TERTANGGUNG]=dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM([TTG_NAME])))               
-      ,[ALAMAT_PEMEGANG_POLIS]=dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM(replace([PP_ADDRESS],'  ',' '))))               
-      ,[HANDPHONE_PEMEGANG_POLIS]=dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM([PP_HANDPHONE])))              
-      ,[RIDER]                
-      ,cw.[POLICY_STATUS]                
-      ,cw.[CURRENCY]                
-      ,cw.[PLAN_CODE]                
-      ,dbo.RemoveNonAlphaNumericCharacters2(cw.[PLAN_NAME]) AS [PLAN_NAME]       
-      ,cw.[BILLING_FREQ]                
-      ,cw.[SUM_INSURED]                
-      ,cw.[BASIC_PREMIUM]                
-      ,cw.[SINGLE_PREMIUM]                
-      ,cw.[DELIVERY_MODE]                
-      ,[AGENT_CODE]               
-      ,dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM(replace(CW.[AGENT_NAME],'  ',' ')))) AS [AGENT_NAME]       
-      ,dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM([AGENT_HANDPHONE])) ) AS AGENT_HANDPHONE       
-   ,dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM(replace([BANKSTAFF_NAME],'   ',' ')))) AS [BANKSTAFF_NAME]       
-   ,dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM(replace([BANKBRANCH],'  ',' ')))) AS BANKBRANCH          
-      ,dbo.RemoveNonAlphaNumericCharacters2(rtrim(EMAIL_ID )) AS EMAIL_ID            
-   ,DATEDIFF(DAY,CW.[PP_DOB],CW.[ISSUED_DATE])/365 AS [AGE]                
-      ,DATEDIFF(DAY,CW.[TTG_DOB],CW.[ISSUED_DATE])/365 AS [AGE_TTG]                
-   ,dbo.RemoveNonAlphaNumericCharacters2(STP.REMARKS) AS REMARKS       
-   ,[TOP_UP]=TOP_UP           
-   ,CIF =  dbo.RemoveNonAlphaNumericCharacters2(RTRIM(CW.CIF_NO ))               
-   ,case when cw.PARTNERSHIP='Bank Commonwealth' then 'PTBC' else cw.PARTNERSHIP end [PARTNERSHIP]               
-      ,ISNULL(POL.IsRemoteSelling,'NO') AS [IsRemoteSelling]  
-   ,dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM(replace(AG.AGENT_NAME,'  ',' ')))) AS LEADER  
-   --,FORMAT(convert(date, DM.JOIN_DATE, 103),'M/d/yyyy') AS JOIN_DATE
-   ,convert(varchar(10),CONVERT(DATE,DM.JOIN_DATE) ,120) AS JOIN_DATE --> change by MUI 20250716
-   ,dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM(DM.AGENT_LEVEL)) ) AS AGENT_LEVEL  
-   ,dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM(DM.JUMBO)) ) AS JUMBO  
-   ,dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM(DM.SD)) ) AS SD  
-   --,dbo.RemoveNonAlphaNumericCharacters(LTRIM(RTRIM(DM.SALESOFFICE_NAME)) ) AS BRANCH  
-   --UR-2024-12-0017 & UR-2024-12-0027 - ADD by MUI 20250203
-   ,Case When CW.AGENT_CODE = KPI.AGENTID THEN KPI.KPI_VALUE
-	ELSE '0.00' END AS Persistensi
-	--,HS.HOLDSTATUS
-	,CASE WHEN HS.HOLDSTATUS = 'HOLD' AND HS.CATEGORYHOLD='REPORTHOLD' THEN 'Y' --UR-2025-03-0003 add by MUI 20250703
-	WHEN HS.HOLDSTATUS = 'RELEASE' AND HS.CATEGORYHOLD='REPORTHOLD' THEN 'N' --UR-2025-03-0003 add by MUI 20250703
-	ELSE 'N'
-	END AS [FlaggedAgent]
-	--END UR-2024-12-0017 & UR-2024-12-0027 - ADD by MUI 20250203
-FROM dbreport.dbo.[v_CRM_WELCOME_CALL]  cw  (nolock)      
--- ubah jadi left join 13 jan 2023  
-left JOIN (SELECT NM. [POLICYNUM] POLICY_NUMBER, REMARKS FROM stg.dbo.[NB_LISTSTP] NM (nolock) --where policynum like '62%'               
-   JOIN (SELECT MAX(ID) ID ,POLICYNUM FROM stg.dbo.[NB_LISTSTP] (nolock) GROUP BY POLICYNUM) MX                
-   ON MX.ID = NM.ID AND MX.POLICYNUM = NM.POLICYNUM                         
-  )STP ON STP.POLICY_NUMBER = CW.POLICY_NUMBER 
---UR-2024-12-0017 & UR-2024-12-0027 - ADD by MUI 20250203
-LEFT JOIN  (
-select POLICYNUM, IsRemoteSelling from STG.DBO.NB_POLICY 
-UNION ALL
-select POLICY_ID , convert(nvarchar(220),remote_selling) As IsRemoteSelling from STG.DBO.OWB_NB_POLICY
-)  POL ON POL.POLICYNUM=CW.POLICY_NUMBER  
---END UR-2024-12-0017 & UR-2024-12-0027 - ADD by MUI 20250203
-LEFT JOIN V_DIM_AGENT AS DM ON  CW.[AGENT_CODE] = DM.AGENT_ID  
-LEFT JOIN DM_AGENTHIERARCHY AH ON AH.AGENT_ID=DM.AGENT_ID and ah.end_date is null  
+KPI_LATEST AS (
+    SELECT AGENTID, DEFINITIONTYPECD, KPI_VALUE, PERIODE
+    FROM (
+        SELECT A.AGENTID, A.DEFINITIONTYPECD, A.KPI_VALUE, A.PERIODE,
+               ROW_NUMBER() OVER (PARTITION BY A.AGENTID ORDER BY A.PERIODE DESC) AS rn
+        FROM AGENT_KPI_SUMMARY A
+        WHERE A.DEFINITIONTYPECD = 'PERSISTENCY_S24' -- push predicate in
+    ) t
+    WHERE rn = 1
+),
+HOLD_LATEST AS (
+    SELECT AGENTID AS AGENT_IDS, HOLDSTATUS, STATUSDATE, CATEGORYHOLD
+    FROM (
+        SELECT Z.AGENTID, Z.HOLDSTATUS, Z.STATUSDATE, Z.CATEGORYHOLD,
+               ROW_NUMBER() OVER (PARTITION BY Z.AGENTID ORDER BY Z.STATUSDATE DESC) AS rn
+        FROM [DMSPROD].[C2L_DMS].[dbo].[AGENT_HOLD_STATUS] Z
+        WHERE Z.CATEGORYHOLD = 'REPORTHOLD' -- push predicate early
+    ) t
+    WHERE rn = 1
+)
+SELECT
+    CW.[POLICY_NUMBER],
+    [ISSUED_DATE] = CONVERT(VARCHAR(10), CONVERT(DATE, CW.ISSUED_DATE), 120),
+    [DOB_PEMEGANG_POLIS] = CONVERT(VARCHAR(10), CONVERT(DATE, PP_DOB), 120),
+    [DOB_TERTANGGUNG_POLIS] = CONVERT(VARCHAR(10), CONVERT(DATE, TTG_DOB), 120),
+    -- NOTE: scalar UDF called many times below (see notes)
+    [NAMA_PEMEGANG_POLIS] = dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM([PP_NAME]))),
+    [NAMA_TERTANGGUNG]   = dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM([TTG_NAME]))),
+    [ALAMAT_PEMEGANG_POLIS] = dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM(REPLACE([PP_ADDRESS],'  ',' ')))),
+    [HANDPHONE_PEMEGANG_POLIS] = dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM([PP_HANDPHONE]))),
+    [RIDER],
+    cw.[POLICY_STATUS],
+    cw.[CURRENCY],
+    cw.[PLAN_CODE],
+    dbo.RemoveNonAlphaNumericCharacters2(cw.[PLAN_NAME]) AS [PLAN_NAME],
+    cw.[BILLING_FREQ],
+    cw.[SUM_INSURED],
+    cw.[BASIC_PREMIUM],
+    cw.[SINGLE_PREMIUM],
+    cw.[DELIVERY_MODE],
+    [AGENT_CODE],
+    dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM(REPLACE(CW.[AGENT_NAME],'  ',' ')))) AS [AGENT_NAME],
+    dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM([AGENT_HANDPHONE]))) AS AGENT_HANDPHONE,
+    dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM(REPLACE([BANKSTAFF_NAME],'   ',' ')))) AS [BANKSTAFF_NAME],
+    dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM(REPLACE([BANKBRANCH],'  ',' ')))) AS BANKBRANCH,
+    dbo.RemoveNonAlphaNumericCharacters2(RTRIM(EMAIL_ID)) AS EMAIL_ID,
+    DATEDIFF(DAY,CW.[PP_DOB],CW.[ISSUED_DATE]) / 365 AS [AGE],
+    DATEDIFF(DAY,CW.[TTG_DOB],CW.[ISSUED_DATE]) / 365 AS [AGE_TTG],
+    dbo.RemoveNonAlphaNumericCharacters2(STP.REMARKS) AS REMARKS,
+    [TOP_UP] = TOP_UP,
+    CIF = dbo.RemoveNonAlphaNumericCharacters2(RTRIM(CW.CIF_NO)),
+    CASE WHEN cw.PARTNERSHIP = 'Bank Commonwealth' THEN 'PTBC' ELSE cw.PARTNERSHIP END [PARTNERSHIP],
+    ISNULL(POL.IsRemoteSelling, 'NO') AS [IsRemoteSelling],
+    dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM(REPLACE(AG.AGENT_NAME,'  ',' ')))) AS LEADER,
+    CONVERT(VARCHAR(10), CONVERT(DATE, DM.JOIN_DATE), 120) AS JOIN_DATE,
+    dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM(DM.AGENT_LEVEL))) AS AGENT_LEVEL,
+    dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM(DM.JUMBO))) AS JUMBO,
+    dbo.RemoveNonAlphaNumericCharacters2(LTRIM(RTRIM(DM.SD))) AS SD,
+    Persistensi = ISNULL(CAST(KPI.KPI_VALUE AS VARCHAR(50)), '0.00'),
+    FlaggedAgent = CASE 
+                      WHEN HS.HOLDSTATUS = 'HOLD' AND HS.CATEGORYHOLD = 'REPORTHOLD' THEN 'Y'
+                      WHEN HS.HOLDSTATUS = 'RELEASE' AND HS.CATEGORYHOLD = 'REPORTHOLD' THEN 'N'
+                      ELSE 'N'
+                   END
+FROM dbreport.dbo.[v_CRM_WELCOME_CALL] cw WITH (NOLOCK)
+LEFT JOIN (
+    -- keep only latest remark per policy via MAX(ID)
+    SELECT NM.POLICYNUM AS POLICY_NUMBER, NM.REMARKS
+    FROM stg.dbo.[NB_LISTSTP] NM WITH (NOLOCK)
+    INNER JOIN (
+        SELECT POLICYNUM, MAX(ID) AS ID
+        FROM stg.dbo.[NB_LISTSTP] WITH (NOLOCK)
+        GROUP BY POLICYNUM
+    ) MX ON MX.ID = NM.ID AND MX.POLICYNUM = NM.POLICYNUM
+) STP ON STP.POLICY_NUMBER = CW.POLICY_NUMBER
+LEFT JOIN POL_COMBINED POL ON POL.POLICYNUM = CW.POLICY_NUMBER
+LEFT JOIN V_DIM_AGENT DM ON CW.[AGENT_CODE] = DM.AGENT_ID
+LEFT JOIN DM_AGENTHIERARCHY AH ON AH.AGENT_ID = DM.AGENT_ID AND AH.END_DATE IS NULL
 LEFT JOIN DM_AGENTS AG ON AG.AGENT_ID = AH.PARENT_AGENT_ID
-LEFT JOIN KPI_SUMMARY KPI on CW.[AGENT_CODE] = KPI.AGENTID
-LEFT JOIN HOLD_STATUS HS on CW.[AGENT_CODE] = HS.AGENT_IDS
+LEFT JOIN KPI_LATEST KPI ON CW.[AGENT_CODE] = KPI.AGENTID
+LEFT JOIN HOLD_LATEST HS ON CW.[AGENT_CODE] = HS.AGENT_IDS;
